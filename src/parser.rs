@@ -1,26 +1,23 @@
 mod event;
 mod expr;
 mod sink;
+mod source;
 
-use std::iter::Peekable;
-use crate::{lexer::{SyntaxKind, Lexer}, syntax::{RadiumLanguage, SyntaxNode}};
+use crate::{lexer::{SyntaxKind, Lexer, Lexeme}, syntax::SyntaxNode};
 use expr::expr;
-use rowan::{GreenNodeBuilder, GreenNode, Language, Checkpoint};
-
-use self::{event::Event, sink::Sink};
+use rowan::GreenNode;
+use self::{event::Event, sink::Sink, source::Source};
 
 struct Parser<'l, 'input> {
-	lexemes: &'l [(SyntaxKind, &'input str)],
-	cursor: usize,
-	events: Vec<Event>
+	source: Source<'l, 'input>,
+	events: Vec<Event>,
 }
 
 impl<'l, 'input> Parser<'l, 'input> {
-	fn new(lexemes: &'l [(SyntaxKind, &'input str)]) -> Self {
+	fn new(lexemes: &'l [Lexeme<'input>]) -> Self {
 		Self {
-			lexemes,
-			cursor: 0,
-			events: Vec::new()
+			source: Source::new(lexemes),
+			events: Vec::new(),
 		}
 	}
 
@@ -45,12 +42,11 @@ impl<'l, 'input> Parser<'l, 'input> {
     }
 
     fn bump(&mut self) {
-        let (kind, text) = self.lexemes[self.cursor];
+        let Lexeme { kind, text } = self.source.next_lexeme().unwrap();
 
-		self.cursor += 1;
         self.events.push(Event::AddToken {
-            kind,
-            text: text.into(),
+            kind: *kind,
+            text: (*text).into(),
         });
     }
 
@@ -59,7 +55,7 @@ impl<'l, 'input> Parser<'l, 'input> {
     }
 
 	fn peek(&mut self) -> Option<SyntaxKind> {
-		self.lexemes.get(self.cursor).map(|(kind, _)| *kind)
+		self.source.peek_kind()
 	}
 }
 
@@ -102,4 +98,14 @@ mod tests {
     fn parse_nothing() {
         check("", expect![[r#"Root@0..0"#]]);
 	}
+
+	#[test]
+    fn parse_whitespace() {
+        check(
+            "   ",
+            expect![[r#"
+Root@0..3
+  Whitespace@0..3 "   ""#]],
+        );
+    }
 }
